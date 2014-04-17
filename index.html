@@ -1,0 +1,790 @@
+<!DOCTYPE html>
+<html>
+	<head>
+	  <style>
+		div.scroll
+		{
+		width:400px;
+		height:200px;
+		overflow:scroll;
+		}
+	  </style>
+      <meta charset="UTF-8" />
+      <title>Dudo Alpha</title>
+    </head>
+	<body style = "width:1000px; align: center;">
+		<script src="http://js.pusher.com/2.1/pusher.min.js" type="text/javascript"></script>
+	 	<script src = "./phaser.min.js"></script>
+		<div id="container" style="margin-left: auto; margin-right: auto; width:1000px;"></div>
+			<h1>
+				<center> Welcome to Dudo </center>
+			</h1>
+			<p>
+				<center> Join a table to start playing! </center>
+			</p>						
+		</body>
+	  
+	  <script>
+	var send_Chat;
+	window.onload = function() {
+
+        var game = new Phaser.Game(1000, 1000, Phaser.AUTO, 'dudo', { preload: preload, create: create, update: update});
+		var temp;
+		var temp2;
+		var ws = new WebSocket('wss://playdudo.azurewebsites.net/');
+		var channel_id = 'default';
+		var table_channel;
+		var channel;
+		var pusher;
+		var player;
+		var player_count;
+		var game_start = false;
+		var dice_count = 0;
+		var dice_type = 2;
+		var current_turn = 0;
+		var last_bet_player = "player1";
+		var last_bet_count = 0;
+		var last_bet_type = 0;
+		var is_obligo_round = false;
+		var background;
+		var game_table;
+		var bet_menu;
+		var up_arrow;
+		var down_arrow;
+		var start_button;
+		var reset_server_button;
+		var reveal_button;
+		var dudo_button;
+		var calzo_button;
+		var bet_button;
+		var chat_button;
+		var bet_one_button;
+		var bet_two_button;
+		var bet_three_button;
+		var bet_four_button;
+		var bet_five_button;
+		var bet_six_button;
+		var bet_display;
+		var last_bet_display;
+		var player_display;
+		var current_turn_display;
+		var error_display;
+		var alert_display;
+		var alert_display2;
+		var alert_display3;
+		var win_display;
+		var lose_display;
+		var chat_display;
+		var player_dice_display = new Array();
+		var opponent_display = new Array();
+		var opponent_dice = new Array();
+		var chat_log = "";
+		var last_round_display;
+		var last_round_display1;
+		var last_round_display2;
+		var last_round_display3;
+		var last_round_display4;
+		var last_round_display5;
+		var table_list = new Array();
+		
+		pusher = new Pusher('62a588e65a78f775a138');
+		
+		ws.onopen = function() {
+		  ws.send(JSON.stringify({'type': "something", 'table': 0}));
+		  console.log('connecting');
+		};
+		//ws.onclose = function() {
+		  //ws.send(JSON.stringify({id : channel_id}));
+		//};
+		ws.onmessage = function(message) {
+	      player = JSON.parse(message.data).player;
+	      channel_id = player.name;
+		  console.log('received: %s', channel_id);
+		  console.log('message received');
+		  channel = pusher.subscribe(channel_id);
+		  display_Dice();
+		  channel.bind('my_event', function(data) {
+		      alert(data.message);
+		  });
+		  channel.bind('update_player', function(message) {
+		      player = message.player;
+		      current_turn = message.curr_turn;
+		      error_display.setText("");
+			  player_display.setText("You Are Player " + (player.seat + 1));
+			  current_turn_display.setText("Current Turn: It is currently player " + (current_turn+1) + "'s turn.");
+			  if(last_bet_type != 0){
+			  	last_bet_display.setText("Last Bet Was: " + last_bet_player + " bet " + last_bet_count + " " + last_bet_type + "'s");
+			  }
+			  else{
+				last_bet_display.setText("");
+			  }
+			  if(player.dice.length == 0){
+				  lose_display.setText("You Have Lost!");
+			  }
+			  display_Menu();
+		  });
+		  
+		};
+
+		send_Chat = function() {
+			var chat_msg = document.getElementById('chat').value 
+			ws.send(JSON.stringify({ type: "chat", name: player.name, c_log: chat_msg, table: player.table}));
+		}
+		
+		function ready(){
+		  ws.send(JSON.stringify({ type: "ready", name: player.name, table: player.table}));
+		}
+		function dudo(){
+		  game.add.audio("button_click").play();
+		  if(current_turn == player.seat){
+			  if(last_bet_type == 0 && last_bet_count == 0){
+		     	  error_display.setText("ERROR: YOU MUST MAKE A BET");
+			  }
+			  else{
+				  ws.send(JSON.stringify({type: "dudo", name: player.name, table: player.table}));
+				  dice_type = 2;
+				  dice_count = 0;
+				  update_Dice();
+			  }
+		  }
+		  else{
+			  error_display.setText("ERROR: IT IS CURRENTLY NOT YOUR TURN");
+		  }
+		}
+		function calzo(){
+	      game.add.audio("button_click").play();
+		  if(current_turn == player.seat || current_turn == player.seat + 1 ||last_bet_type == 0){
+			  error_display.setText("ERROR: YOU CAN NOT CALZO THEN");
+		  }
+		  else{
+			  if(player.dice.length == 0){
+				  error_display.setText("ERROR: YOU CANNOT CALZO ONCE YOU HAVE LOST");
+			  }
+			  else{
+				  ws.send(JSON.stringify({type: "calzo", name: player.name, table: player.table}));
+				  dice_type = 2;
+				  dice_count = 0;
+				  update_Dice();
+			  }
+		  }
+			
+		}
+		function bet(){
+		  game.add.audio("button_click").play();
+		  if(current_turn == player.seat){
+			  if(is_legal_bet()){
+		   		  ws.send(JSON.stringify({type: "bet", name: player.name, d_count: dice_count, d_type: dice_type, table: player.table}));
+		   		  dice_type = 2;
+		   		  dice_count = 0;
+		   		  update_Dice();
+			  }
+			  else{
+				  error_display.setText("ERROR: INVALID BET");
+			  }
+		  }
+		  else{
+			  error_display.setText("ERROR: IT IS CURRENTLY NOT YOUR TURN");
+		  }
+		}
+		function is_legal_bet(){
+			var eff_type;
+			var eff_count;
+			var eff_ltype;
+			var eff_lcount;
+			
+			if(dice_type == 0){
+				return false;
+			}
+			else if(last_bet_type == 1){
+				eff_ltype = 7;
+				eff_lcount = 2*last_bet_count;
+			}
+			else{
+				eff_ltype = last_bet_type;
+				eff_lcount = last_bet_count;
+			}
+			if(dice_type == 1){
+				eff_type = 7;
+				eff_count = 2*dice_count;
+			}
+			else{
+				eff_type = dice_type;
+				eff_count = dice_count;
+			}
+			if(is_obligo_round && (eff_type != eff_ltype) 
+			 && player.dice.length > 1){
+				return false;			
+			}
+			if(eff_count > eff_lcount){
+				return true;
+			}
+			else if(eff_count == eff_lcount && eff_type > eff_ltype){
+				return true;
+			}
+			else{
+				return false;
+			}	
+		}
+		function bet_Up(){
+		  game.add.audio("button_click").play();
+		  dice_count = dice_count + 1;
+		  update_Dice();
+		}
+		function bet_Down(){
+		  game.add.audio("button_click").play();
+		  if(dice_count > 0){
+		  	dice_count = dice_count - 1;
+		  }
+		  update_Dice();
+		}
+		function bet_One(){
+		  game.add.audio("button_click").play();
+		  if(is_obligo_round){
+			  if(player.dice.length == 1 || last_bet_type == 1){
+				dice_type = 1;
+		    	update_Dice(); 
+			  }
+			  else{
+				  error_display.setText("ERROR: YOU MUST OBLIGE");
+			  }
+		  }
+		  else{
+			dice_type = 1;
+		    update_Dice();   
+		  }
+		}
+		function bet_Two(){
+		  game.add.audio("button_click").play();
+		  if(is_obligo_round){
+			  if(player.dice.length == 1 || last_bet_type == 2){
+				dice_type = 2;
+		    	update_Dice(); 
+			  }
+			  else{
+				  error_display.setText("ERROR: YOU MUST OBLIGE");
+			  }
+		  }
+		  else{
+			dice_type = 2;
+		    update_Dice();   
+		  }
+		}
+		function bet_Three(){
+		   game.add.audio("button_click").play();
+		   if(is_obligo_round){
+			  if(player.dice.length == 1 || last_bet_type == 3){
+				dice_type = 3;
+		    	update_Dice(); 
+			  }
+			  else{
+				  error_display.setText("ERROR: YOU MUST OBLIGE");
+			  }
+		  }
+		  else{
+			dice_type = 3;
+		    update_Dice();   
+		  }
+		}
+		function bet_Four(){
+		  game.add.audio("button_click").play();
+		  if(is_obligo_round){
+			  if(player.dice.length == 1 || last_bet_type == 4){
+				dice_type = 4;
+		    	update_Dice(); 
+			  }
+			  else{
+				  error_display.setText("ERROR: YOU MUST OBLIGE");
+			  }
+		  }
+		  else{
+			dice_type = 4;
+		    update_Dice();   
+		  }
+		}
+		function bet_Five(){
+		  game.add.audio("button_click").play();
+		  if(is_obligo_round){
+			  if(player.dice.length == 1 || last_bet_type == 5){
+				dice_type = 5;
+		    	update_Dice(); 
+			  }
+			  else{
+				  error_display.setText("ERROR: YOU MUST OBLIGE");
+			  }
+		  }
+		  else{
+			dice_type = 5;
+		    update_Dice();   
+		  }
+		}
+		function bet_Six(){
+		  game.add.audio("button_click").play();
+		  if(is_obligo_round){
+			  if(player.dice.length == 1 || last_bet_type == 6){
+				dice_type = 6;
+		    	update_Dice(); 
+			  }
+			  else{
+				  error_display.setText("ERROR: YOU MUST OBLIGE");
+			  }
+		  }
+		  else{
+			dice_type = 6;
+		    update_Dice();   
+		  }
+		}
+		function update_Dice(){
+		  bet_display.setText("Your Bet: " + dice_count + " " + dice_type + "'s");
+		}
+		function reset_server(){
+		  game.add.audio("button_click").play();
+		  ws.send(JSON.stringify({'type': "reset", table: player.table}));
+		}
+		function join_Table0(){
+		  game.add.audio("button_click").play();
+		  player.table = 0;
+		  bind_To_Table();
+		}
+		function join_Table1(){
+		  game.add.audio("button_click").play();
+		  player.table = 1;
+		  bind_To_Table();
+		}
+		function join_Table2(){
+		  game.add.audio("button_click").play();
+		  player.table = 2;
+		  bind_To_Table();
+		}
+		function join_Table3(){
+		  game.add.audio("button_click").play();
+		  player.table = 3;
+		  bind_To_Table();
+		}
+		
+		function bind_To_Table(){
+		  var table_name = "table" + player.table;
+		  table_channel = pusher.subscribe(table_name);
+		  ws.send(JSON.stringify({'type': "join_table", player: player}));
+		  table_channel.bind('pusher:subscription_succeeded', function() {
+			  console.log("subscription succeeded");
+			  ws.send(JSON.stringify({ type: "sub_success",
+			  						   name: player.name,
+									   table: player.table}));
+		  });
+		  table_channel.bind('alert', function(message) {
+		      alert_display.setText(message.message);
+			  alert_display2.setText(message.message2);
+			  alert_display3.setText(message.message3);
+		  });
+		  table_channel.bind('start_game', function(message){
+			  current_turn = 0;
+			  game_start = true;
+		  });
+		  table_channel.bind('bet', function(message){
+			  last_bet_player = message.name;
+			  last_bet_count = message.dice_count;
+			  last_bet_type = message.dice_type;
+			  current_turn = message.curr_turn;
+			  error_display.setText("");
+			  alert_display.setText("");
+			  alert_display2.setText("");
+			  alert_display3.setText("");
+			  player_display.setText("You Are Player " + (player.seat + 1));
+			  current_turn_display.setText("Current Turn: It is currently player " + (current_turn+1) + "'s turn.");
+			  if(player.seat == current_turn){
+				  game.add.audio('whistle_alert').play();
+			  }
+			  last_bet_display.setText("Last Bet Was: " + last_bet_player + " bet " + last_bet_count + " " + last_bet_type + "'s");
+			  display_Dice();
+		  });
+		  table_channel.bind('new_hand', function(message){
+			  current_turn = message.start_seat;
+			  last_bet_count = 0;
+			  last_bet_type = 0;
+			  last_bet_display.setText("");
+		  });
+		  table_channel.bind("obligo", function(message){
+			  is_obligo_round = true;
+		  });
+		  table_channel.bind("not_obligo", function(message){
+			  is_obligo_round = false;
+		  });
+		  table_channel.bind("win", function(message){
+			  alert_display.setText("");
+			  alert_display2.setText("");
+			  alert_display3.setText("");
+			  win_display.setText("*** Player " + message.player.toString() + " has won!! Restart the server to play again!! ***");
+		  });
+		  table_channel.bind("chat", function(message){
+			 chat_log = chat_log + message.message;
+			  /* update the gui of the log */
+			  //chat_display.setText(chat_log); hopefully can implement in phaser 
+			  document.getElementById("scroll_box").innerHTML = chat_log; //will update the HTML scroll box
+		  });
+		  table_channel.bind("show_hands", function(message){
+			  display_Opponents_Dice(message.players);
+		  });
+		  table_channel.bind("new_player", function(message){
+			  player_count = message.num_players;
+			  display_Opponents();
+		  });
+			
+		  display_Table();
+		}
+		
+	    // Enable pusher logging - don't include this in production
+	    Pusher.log = function(message) {
+	      if (window.console && window.console.log) {
+	        window.console.log(message);
+	      }
+	    };
+		 
+        function preload () {
+			game.load.spritesheet('start_button', 'imgs/button_sprite_sheet.png', 193, 71);
+        	game.load.image('game_table', 'imgs/gameTable.png');
+			game.load.image('die1', 'imgs/die1.png');
+			game.load.image('die2', 'imgs/die2.png');
+			game.load.image('die3', 'imgs/die3.png');
+			game.load.image('die4', 'imgs/die4.png');
+			game.load.image('die5', 'imgs/die5.png');
+			game.load.image('die6', 'imgs/die6.png');
+			game.load.image('dice_cup', 'imgs/cup.png');
+			game.load.image('bet_menu_panel', 'imgs/panel.png');
+			game.load.image('sel_arrow_up', 'imgs/selected_arrow_up.png');
+			game.load.image('sel_arrow_down', 'imgs/selected_arrow_down.png');
+			game.load.image('unsel_arrow_up', 'imgs/unselected_arrow_up.png');
+			game.load.image('unsel_arrow_down', 'imgs/unselected_arrow_down.png');
+			game.load.image('dudo_button', 'imgs/dudoButton.png');
+			game.load.image('calzo_button', 'imgs/calzoButton.png');
+			game.load.image('bet_button', 'imgs/betButton.png');
+			game.load.audio('1dieroll', 'audio/1Die.ogg');
+			game.load.audio('2diceroll', 'audio/2Dice.ogg');
+			game.load.audio('3diceroll', 'audio/3Dice.ogg');
+			game.load.audio('4diceroll', 'audio/4Dice.ogg');
+			game.load.audio('5diceroll', 'audio/5Dice.ogg');
+			game.load.audio("button_click", 'audio/Buttonclick.ogg');
+			game.load.audio("whistle_alert", 'audio/Whistlealert.ogg');
+			
+			game.load.image('reset_server_button', 'imgs/resetServerButton.png');
+		 }
+		 
+
+        function create () {
+			
+			
+			table_list.push(game.add.button(450, 200, 'bet_button', join_Table0 ,this));
+			table_list.push(game.add.button(450, 260, 'bet_button', join_Table1 ,this));
+			table_list.push(game.add.button(450, 320, 'bet_button', join_Table2 ,this));
+			table_list.push(game.add.button(450, 380, 'bet_button', join_Table3 ,this));			
+			
+			game.stage.backgroundColor = '#182d3b';
+			/*
+			*/
+        }
+		
+		function update () {
+			//This function is called 60 times per second to refresh the page images.
+		}
+		
+		function display_Table(){
+			
+			while(table_list.length > 0){
+				table_list[0].destroy();
+				table_list.splice(0,1);
+		   }
+			
+			game_table = game.add.sprite(100, 250, 'game_table');
+			bet_menu = game.add.sprite(357, 75, 'bet_menu_panel');
+			up_arrow = game.add.button(600, 140, 'unsel_arrow_up', bet_Up, this);
+			down_arrow = game.add.button(600, 200, 'unsel_arrow_down', bet_Down, this);
+			bet_one_button = game.add.button(415, 140, 'die1', bet_One, this);
+		    bet_two_button = game.add.button(455, 140, 'die2', bet_Two, this);;
+			bet_three_button = game.add.button(495, 140, 'die3', bet_Three, this);;
+			bet_four_button = game.add.button(415, 190, 'die4', bet_Four, this);;
+			bet_five_button = game.add.button(455, 190, 'die5', bet_Five, this);;
+			bet_six_button = game.add.button(495, 190, 'die6', bet_Six, this);;
+			
+			//start_button = game.add.button(game.world.centerX - 95, 465, 'start_button', display_Menu, this, 2, 1, 0);
+			dudo_button = game.add.button(370, 240, 'dudo_button', dudo, this, 2, 1, 0);
+			calzo_button = game.add.button(460, 240, 'calzo_button', calzo, this, 2, 1, 0);
+			bet_button = game.add.button(550, 240, 'bet_button', bet, this, 2, 1, 0);
+			reset_server_button = game.add.button(700, 50, 'reset_server_button', reset_server, this, 2, 1, 0);
+			// Button
+			//revealButton = game.add.button(game.world.centerX - 95, 765, 'startButton', button_View, this, 2, 1, 0);
+
+			
+			bet_display = game.add.text(450, 110, "Your Bet: " + dice_count + " " + dice_type + "'s", {
+				font: "20px Arial",
+				fill: "#ffffff",
+				align: "left"
+			});
+			last_bet_display = game.add.text(25, 75, "Last Bet Was: " + last_bet_player + " bet " + last_bet_count + " " + last_bet_type + "'s", {
+				font: "14px Arial",
+				fill: "#ffffff",
+				align: "left"
+			});
+			player_display = game.add.text(25, 25, "You Are Player ", {
+				font: "14px Arial",
+				fill: "#ffffff",
+				align: "left"
+			});
+			current_turn_display = game.add.text(25, 50, "Current Turn: It is currently player " + (current_turn+1) + "'s turn.", {
+				font: "14px Arial",
+				fill: "#ffffff",
+				align: "left"
+			});
+			error_display = game.add.text(25, 100, "", {
+				font: "14px Arial",
+				fill: "#ffffff",
+				align: "left"
+			});
+			alert_display = game.add.text(450, 15, "", {
+				font: "14px Arial",
+				fill: "#ffffff",
+				align: "left"
+			});
+			alert_display2 = game.add.text(450, 35, "", {
+				font: "14px Arial",
+				fill: "#ffffff",
+				align: "left"
+			});
+			alert_display3 = game.add.text(450, 55, "", {
+				font: "14px Arial",
+				fill: "#ffffff",
+				align: "left"
+			});
+			win_display = game.add.text(325, 700, "", {
+				font: "14px Arial",
+				fill: "#ffffff",
+				align: "left"
+			});
+			lose_display = game.add.text(450, 725, "", {
+				font: "14px Arial",
+				fill: "#ffffff",
+				align: "left"
+			});
+			chat_display = game.add.text(55, 650, "", {
+				font: "14px Arial",
+				fill: "ffffff",
+				align: "left"
+			});
+			last_round_display = game.add.text(game.world.centerX - 100, 700, "", {
+				font: "20px Arial",
+				fill: "#ffffff",
+				align: "left"
+			});
+			last_round_display1 = game.add.text(game.world.centerX - 200, 760, "", {
+				font: "14px Arial",
+				fill: "#ffffff",
+				align: "left"
+			});
+			last_round_display2 = game.add.text(game.world.centerX - 200, 800, "", {
+				font: "14px Arial",
+				fill: "#ffffff",
+				align: "left"
+			});
+			last_round_display3 = game.add.text(game.world.centerX - 200, 840, "", {
+				font: "14px Arial",
+				fill: "#ffffff",
+				align: "left"
+			});
+			last_round_display4 = game.add.text(game.world.centerX - 200, 880, "", {
+				font: "14px Arial",
+				fill: "#ffffff",
+				align: "left"
+			});
+			last_round_display5 = game.add.text(game.world.centerX - 200, 950, "", {
+				font: "14px Arial",
+				fill: "#ffffff",
+				align: "left"
+			});			
+		}
+		
+		function display_Menu () {
+			//startButton.visible =! startButton.visible;
+			
+			var dice_roll_audio;
+			
+			switch (player.dice.length) {
+			  		case 1:
+						dice_roll_audio = game.add.audio('1dieroll');
+						break;
+					case 2:
+						dice_roll_audio = game.add.audio('2diceroll');
+						break;
+					case 3:
+						dice_roll_audio = game.add.audio('3diceroll');
+						break;
+					case 4:
+						dice_roll_audio = game.add.audio('4diceroll');
+						break;
+					case 5:
+						dice_roll_audio = game.add.audio('5diceroll');
+						break;
+		  		}
+    		
+			dice_roll_audio.play();
+			
+			window.setTimeout(function(){display_Dice()},1000);
+       }
+	   
+	   function button_View () {
+		   bet_menu.visible != bet_menu.visible;
+		   up_arrow.visible != up_arrow.visible;
+		   down_arrow.visible != down_arrow.visible;
+	   }
+	   
+	   function display_Opponents () {
+		   while(opponent_display.length > 0){
+				opponent_display[0].destroy();
+				opponent_display.splice(0,1);
+		   }
+		   switch (player_count) {
+			  		case 1:
+						// This should never be the case.
+						break;
+					case 2:
+						opponent_display.push(game.add.sprite((game.world.centerX - 40), 375, 'dice_cup'));
+						break;
+					case 3:
+						opponent_display.push(game.add.sprite((game.world.centerX + 150), 375, 'dice_cup'));
+						opponent_display.push(game.add.sprite((game.world.centerX - 230), 375, 'dice_cup'));
+						break;
+					case 4:
+						opponent_display.push(game.add.sprite((game.world.centerX + 190), 400, 'dice_cup'));
+						opponent_display.push(game.add.sprite((game.world.centerX - 270), 400, 'dice_cup'));
+						opponent_display.push(game.add.sprite((game.world.centerX - 40), 375, 'dice_cup'));
+						break;
+					case 5:
+						opponent_display.push(game.add.sprite((game.world.centerX + 190), 550, 'dice_cup'));
+						opponent_display.push(game.add.sprite((game.world.centerX - 270), 550, 'dice_cup'));
+						opponent_display.push(game.add.sprite((game.world.centerX - 200), 375, 'dice_cup'));
+						opponent_display.push(game.add.sprite((game.world.centerX + 120), 375, 'dice_cup'));
+						break;
+			}
+	   }
+	   
+	   function display_Opponents_Dice (players) {
+		   while(opponent_dice.length > 0){
+				opponent_dice[0].destroy();
+				opponent_dice.splice(0,1);
+		   }
+		   last_round_display.setText("Dice From Last Round:");
+		   switch(players.length) {
+			   case 5:
+			   		last_round_display5.setText("Player 5: ");
+			   case 4:
+			   		last_round_display4.setText("Player 4: ");
+			   case 3: 
+			   		last_round_display3.setText("Player 3: ");
+			   case 2:
+			   		last_round_display2.setText("Player 2: ");
+			   case 1:
+				    last_round_display1.setText("Player 1: ");
+		   }
+		   for(temp = 0; temp < players.length; temp = temp + 1) {
+			   for(temp2 = 0; temp2 < players[temp].dice.length; temp2 = temp2 + 1) {
+				   switch(players[temp].dice[temp2]) {
+					    case 1:
+				   			opponent_dice.push(game.add.sprite((game.world.centerX - 96) + (temp2 * 32), 750 + (temp * 40), 'die1'));
+							break;
+						case 2:
+				   			opponent_dice.push(game.add.sprite((game.world.centerX - 96) + (temp2 * 32), 750 + (temp * 40), 'die2'));
+							break;
+						case 3:
+				   			opponent_dice.push(game.add.sprite((game.world.centerX - 96) + (temp2 * 32), 750 + (temp * 40), 'die3'));
+							break;
+						case 4:
+				   			opponent_dice.push(game.add.sprite((game.world.centerX - 96) + (temp2 * 32), 750 + (temp * 40), 'die4'));
+							break;
+						case 5:
+				   			opponent_dice.push(game.add.sprite((game.world.centerX - 96) + (temp2 * 32), 750 + (temp * 40), 'die5'));
+							break;
+						case 6:
+				   			opponent_dice.push(game.add.sprite((game.world.centerX - 96) + (temp2 * 32), 750 + (temp * 40), 'die6'));
+							break;
+				   }
+			   }
+		   }
+	   }
+	   
+	   function display_Dice () {
+			while(player_dice_display.length > 0){
+				player_dice_display[0].destroy();
+				player_dice_display.splice(0,1);
+			}
+		    
+		 	for (temp = 0; temp < player.dice.length; temp = temp + 1) {
+				switch (player.dice[temp]) {
+			  		case 1:
+						player_dice_display.push(game.add.sprite((game.world.centerX - (player.dice.length * 16)) + (temp * 32), 580, 'die1'));
+						break;
+					case 2:
+						player_dice_display.push(game.add.sprite((game.world.centerX - (player.dice.length * 16)) + (temp * 32), 580, 'die2'));
+						break;
+					case 3:
+						player_dice_display.push(game.add.sprite((game.world.centerX - (player.dice.length * 16)) + (temp * 32), 580, 'die3'));
+						break;
+					case 4:
+						player_dice_display.push(game.add.sprite((game.world.centerX - (player.dice.length * 16)) + (temp * 32), 580, 'die4'));
+						break;
+					case 5:
+						player_dice_display.push(game.add.sprite((game.world.centerX - (player.dice.length * 16)) + (temp * 32), 580, 'die5'));
+						break;
+					case 6:
+						player_dice_display.push(game.add.sprite((game.world.centerX - (player.dice.length * 16)) + (temp * 32), 580, 'die6'));
+						break;
+		  		}
+	   	  	}
+	   }
+    };
+
+    </script>
+	
+	<p id="dudo"></p>
+	<form>
+	Chat: <input type="text" name="chat" id="chat" style="width:500px;">
+	</form>
+	<input type="button" value="Send" OnClick="send_Chat()"/>
+	<div class="scroll">
+		<p id="scroll_box"></p>
+	</div>
+<p>
+<a href="https://www.surveymonkey.com/s/35X2XNR" target = "_blank">Please take our survey to improve the game</a>
+<h4> THE BASICS </h4>
+This is a multiplayer game and consists of guessing how many dice there are on the table showing a certain number.  A player who loses a round will lose one of their dice and are 
+eliminated if they have no dice remaining.  The last player standing wins.
+
+<h4> LETS GET STARTED </h4>
+The first player bets how many dice at a minimum are showing a certain number (for example, "six threes", meaning there are at least 6 dice showing a three, which is not necessarily true).  
+The next player (play always moves clockwise) then must choose to either raise or call the statement. If the player wants to raise, he or she must either increase the number of dice, 
+the die number, or both.  In our version of this game, ones are counted as wild (a one counts for every type of die), are the highest type of die (the order is 2<3<4<5<6<1), 
+and are counted as double when using them to bet (three ones is a higher bet than six sixes).
+
+<h4> CALLING DUDO </h4>
+If the player wants to call DUDO (which means "I doubt" in Spanish), it mean they do not believe the correctness of the previous bet.  
+Each player will reveal their dice to see if the previous bet is right or not.  If the bet is right, then the player who called dudo loses a die.  
+If the bet is wrong, then the player who made the previous bet loses a die.  After this a new round is started with the player that lost a die making the new initial bet of their choice, 
+but if that player was eliminated, the player to that player's left will start.
+
+<h4> CALZO </h4>
+If a player who did not make the current bet or is not currently the one deciding to raise or call thinks the current bet is exactly right (if the current bet was "five fives", 
+there must be exactly five dice that are showing a five or one on the table), then the player can call CALZO (which means "I stick" in Spanish). 
+Each player must then reveal their dice, and if the bet is exactly right, then the player who called CALZO will gain a die (maximum of five).  If the bet is not exactly right, 
+then the player who called CALZO will lose a die.  Either way the player who called CALZO will start the next round if they were not eliminated.
+
+<h4> OBLIGO </h4>
+When a player that had two dice loses one, a special round is played called OBLIGO (which means "I oblige" in Spanish).  
+This player will always start the round because of losing a die.  Each player can only OBLIGO once during the whole game.  
+If the player wins a die by calling CALZO and then loses it, there is no additional OBLIGO round.  When raising in this round, the die number may not be changed 
+(for example, "two fours" cannot be raised to "two sixes", but can be raised to "three fours").  The exception to this rule is any player with only one die left can change the die number.  
+Subsequent players must then follow the new value that has been called.
+
+<h4> THE WILD 1'S </h4>
+Remember!!! <br>
+One's can count as any other die type when counting up the total dice for that particular face value.
+</p>
+
+
+    </body>
+</html>
